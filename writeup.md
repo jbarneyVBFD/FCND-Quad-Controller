@@ -41,7 +41,29 @@ pqrCmd.y = qc;
 I then wrapped it all in an if statement to ensure the collective thrust input is not negative. 
 
 ### Implement altitude contoller in C++ ###
-- 
+- I first calculated the z error by finding the difference of the inputs of the desired vertical position and the actual vertical position. I placed this in the zE variable.
+Then I incremented the integrated altitude error by the product of the z error and the time step. 
+```cpp
+float zE = posZCmd - posZ;
+integratedAltitudeError += zE * dt;
+```
+I then calculated the p-term by multiplying the positional gain parameter by the z error. Simarily, I calculated the i-term by multiplying the integrated positional gain parameter by the integrated z error. 
+```cpp
+float pTerm = kpPosZ * zE;
+float iTerm = KiPosZ * integratedAltitudeError;
+```
+Then calculated the z dot error with the difference of the commanded velocity and the actual velocity, constrained to be within the maximum ascent and descent rates. This led me to solve for the d-term by multiplying the velocity gain parameter by the z dot error.
+```cpp
+float zDotE = CONSTRAIN(velZCmd, -maxAscentRate, maxDescentRate) - velZ;
+float dTerm = kpVelZ * zDotE;
+```
+I then solved for <a href="https://www.codecogs.com/eqnedit.php?latex=\bar{u}_{1}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\bar{u}_{1}" title="\bar{u}_{1}" /></a> by summing the p, i and d-terms as well as the feed forward vertical acceleration. I then solved for u1 by dividing the difference of <a href="https://www.codecogs.com/eqnedit.php?latex=\bar{u}_{1}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\bar{u}_{1}" title="\bar{u}_{1}" /></a> and gravity by the adjustable knob <a href="https://www.codecogs.com/eqnedit.php?latex=b^{z}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?b^{z}" title="b^{z}" /></a>
+. From there I converted the u1 to Newtons and accounted for z axis down is positive by multiplying it by the negative mass. I also constrained u1 by the max ascent and descent rates divided by the time step.
+```cpp
+float u1Bar = pTerm + iTerm + dTerm + accelZCmd;
+float u1 = (u1Bar - CONST_GRAVITY) / R(2, 2);
+thrust = - mass * CONSTRAIN(u1, - maxAscentRate / dt, maxDescentRate / dt);
+```
 
 ### Implement lateral position control in C++ ###
 -
@@ -56,7 +78,7 @@ I then wrapped it all in an if statement to ensure the collective thrust input i
 float l = L / sqrtf(2.f); 
 ```
 - I then calculated the moments about the x, y, and z axes by dividing the roll and pitch moments by the d variable above, and dividing the yaw moment by the drag/thrust
-ratio kappa. Then they were placed in Fx, Fy, and Fz variables.
+ratio kappa. Then they were placed in Fx, Fy, and Fz variables. 
 
 ```cpp
 float Fx = momentCmd.x / l;
