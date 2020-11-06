@@ -47,17 +47,17 @@ Then I incremented the integrated altitude error by the product of the z error a
 float zE = posZCmd - posZ;
 integratedAltitudeError += zE * dt;
 ```
-I then calculated the p-term by multiplying the positional gain parameter by the z error. Simarily, I calculated the i-term by multiplying the integrated positional gain parameter by the integrated z error. 
+- I then calculated the p-term by multiplying the positional gain parameter by the z error. Simarily, I calculated the i-term by multiplying the integrated positional gain parameter by the integrated z error. 
 ```cpp
 float pTerm = kpPosZ * zE;
 float iTerm = KiPosZ * integratedAltitudeError;
 ```
-Then calculated the z dot error with the difference of the commanded velocity and the actual velocity, constrained to be within the maximum ascent and descent rates. This led me to solve for the d-term by multiplying the velocity gain parameter by the z dot error.
+- Then calculated the z dot error with the difference of the commanded velocity and the actual velocity, constrained to be within the maximum ascent and descent rates. This led me to solve for the d-term by multiplying the velocity gain parameter by the z dot error.
 ```cpp
 float zDotE = CONSTRAIN(velZCmd, -maxAscentRate, maxDescentRate) - velZ;
 float dTerm = kpVelZ * zDotE;
 ```
-I then solved for <a href="https://www.codecogs.com/eqnedit.php?latex=\bar{u}_{1}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\bar{u}_{1}" title="\bar{u}_{1}" /></a> by summing the p, i and d-terms as well as the feed forward vertical acceleration. I then solved for u1 by dividing the difference of <a href="https://www.codecogs.com/eqnedit.php?latex=\bar{u}_{1}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\bar{u}_{1}" title="\bar{u}_{1}" /></a> and gravity by the adjustable knob <a href="https://www.codecogs.com/eqnedit.php?latex=b^{z}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?b^{z}" title="b^{z}" /></a>
+- I then solved for <a href="https://www.codecogs.com/eqnedit.php?latex=\bar{u}_{1}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\bar{u}_{1}" title="\bar{u}_{1}" /></a> by summing the p, i and d-terms as well as the feed forward vertical acceleration. I then solved for u1 by dividing the difference of <a href="https://www.codecogs.com/eqnedit.php?latex=\bar{u}_{1}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\bar{u}_{1}" title="\bar{u}_{1}" /></a> and gravity by the adjustable knob <a href="https://www.codecogs.com/eqnedit.php?latex=b^{z}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?b^{z}" title="b^{z}" /></a>
 . From there I converted the u1 to Newtons and accounted for z axis down is positive by multiplying it by the negative mass. I also constrained u1 by the max ascent and descent rates divided by the time step.
 ```cpp
 float u1Bar = pTerm + iTerm + dTerm + accelZCmd;
@@ -66,10 +66,44 @@ thrust = - mass * CONSTRAIN(u1, - maxAscentRate / dt, maxDescentRate / dt);
 ```
 
 ### Implement lateral position control in C++ ###
--
+- I first calculated the magnitude of the commanded velocity, then checked if it was greater than the max speed in the x and y direction. If found to be greater, I normalized the commanded velocity while multiplying by the max speed. I did the same thing for the commanded acceleration. 
+```cpp
+float velocityMag = sqrtf(powf(velCmd.x, 2) + powf(velCmd.y, 2));
+
+if (velocityMag > maxSpeedXY){
+    velCmd *= maxSpeedXY / velocityMag;
+}
+
+float accelMag = sqrtf(powf(accelCmd.x, 2) + powf(accelCmd.y, 2));
+
+if (accelMag > maxAccelXY){
+    accelCmd *= maxAccelXY / accelMag;
+}
+```
+- I then summed the p-term, d-term and feed forward acceleration command and set <a href="https://www.codecogs.com/eqnedit.php?latex=\ddot{z}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\ddot{z}" title="\ddot{z}" /></a> to equal 0.
+```cpp
+accelCmd = accelCmdFF + kpPosXY * (posCmd - pos) + kpVelXY * (velCmd - vel);
+accelCmd.z = 0.f;
+```
 
 ### Implement yaw control in C++ ###
--
+- To keep the commanded yaw within 0 to 2pi (or 360 degrees) I first change the commanded yaw to be the remainder of it by 2 times pi. I then calculated the yaw error. If not within the range pi to negative pi, I incremented the error by 2 times pi back into the range. 
+```cpp
+yawCmd = fmodf(yawCmd, 2.0 * F_PI);
+
+float yawE = yawCmd - yaw;
+
+if (yawE > F_PI){
+    yawE -= 2.0 * F_PI;
+}
+else if (yawE < -F_PI){
+    yawE += 2.0 * F_PI;
+}
+```
+- I then multiplied the yaw error by the yaw gain parameter and returned the result.
+```cpp
+yawRateCmd = kpYaw * yawE;
+```
 
 ### Implement calculating the motor commands given commanded thrust and moments in C++ ###
 - I first calculated the distance between a propeller and the x axis by dividing the length of the arm by the sqaure root of 2 and placing the result in the variable l.
